@@ -278,11 +278,11 @@ trans_weight = trans_weight_lastlayers(model_slm_param_name, model_llm_param_nam
 
 # ### specific_layer = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 33, 34, 35]
 # ### trans_weight = trans_weight_gradscore_layer(model_slm_param_name, model_llm_param_name, specific_layer=None)
-torch.save(trans_weight, "kj_weight/.pth")
+torch.save(trans_weight, "kj_weight_trans/.pth")
 
 # lm_head_w = torch.linalg.pinv(model_slm.lm_head.weight) @ model_llm.lm_head.weight  
 lm_head_w = lm_head_trans_weight(model_llm.lm_head.weight, model_slm.lm_head.weight)
-torch.save(lm_head_w, "kj_weight_lmhead/.pth")
+torch.save(lm_head_w, "kj_weight_lmhead_trans/.pth")
 
 
 path_slm = 'models/Qwen2.5-0.5B-Instruct/'  ## 24 layers
@@ -298,8 +298,8 @@ path_llm = 'models/Qwen2.5-3B-Instruct/'  ## 32 layers
 slm_all_finetune_path = ""  ## fine-tuned slm with all domain dataset
 slm_val_finetune_path = ""  ## fine-tuned slm with calibration dataset
 
-trans_weight_path = 'kj_weihgt/.pth'
-trans_lm_head_path = 'kj_weight_lmhead/.pth'
+trans_weight_path = 'kj_weihgt_trans/.pth'
+trans_lm_head_path = 'kj_weight_lmhead_trans/.pth'
 
 model_llm = AutoModelForCausalLM.from_pretrained(path_llm)
 model_slm = AutoModelForCausalLM.from_pretrained(path_slm)
