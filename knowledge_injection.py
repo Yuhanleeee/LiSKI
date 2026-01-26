@@ -286,7 +286,7 @@ trans_lm_head_path = 'kj_weight_lmhead/.pth'
 
 model_llm = AutoModelForCausalLM.from_pretrained(path_llm)
 model_slm = AutoModelForCausalLM.from_pretrained(path_slm)
-# model_slm_finetune = AutoModelForCausalLM.from_pretrained(slm_all_finetune_path)
+model_slm_finetune = AutoModelForCausalLM.from_pretrained(slm_all_finetune_path)
 model_slm_finetune_valdata = AutoModelForCausalLM.from_pretrained(slm_val_finetune_path)
 
 trans_weight = torch.load(trans_weight_path)
@@ -294,12 +294,12 @@ model_llm_param_name = {name:param for name, param in model_llm.named_parameters
 
 
 ## knowledge injection
-delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge(model_slm, model_slm_finetune_valdata, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=12)
-# delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge(model_slm, model_slm_finetune, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=12)
+delta_weight_trans_val, delta_weight_trans_lmhead_val = trans_knowledge(model_slm, model_slm_finetune_valdata, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=12)
+delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge(model_slm, model_slm_finetune, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=12)
 
 
 ### knowledge injection, layer numbers of sml over than that of llm
-# delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge_inverse(model_slm, model_slm_finetune_valdata, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=8)
+# delta_weight_trans_val, delta_weight_trans_lmhead_val = trans_knowledge_inverse(model_slm, model_slm_finetune_valdata, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=8)
 # delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge_inverse(model_slm, model_slm_finetune, model_llm_param_name, trans_weight, trans_lm_head_path, layer_site=8)
 
 
@@ -308,15 +308,17 @@ delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge(model_slm, model
 # delta_weight_trans, delta_weight_trans_lmhead = trans_knowledge_specific_layer(model_slm, model_slm_finetune_valdata, model_llm_param_name, trans_weight, specific_layer)
 
 
-torch.save(delta_weight_trans, 'kj_weight/.pth')
-torch.save(delta_weight_trans_lmhead, 'kj_weight_lmhead/.pth')
+torch.save(delta_weight_trans, 'kj_weight_all/.pth')
+torch.save(delta_weight_trans_lmhead, 'kj_weight_lmhead_all/.pth')
 
+torch.save(delta_weight_trans_val, 'kj_weight_calibration/.pth')
+torch.save(delta_weight_trans_lmhead_val, 'kj_weight_lmhead_calibration/.pth')
 
-
-##### SVD
+"""
+##### SVD for space efficiency
 delta_weight_trans_lmhead = torch.load('kj_weight_lmhead/.pth')
 delta_weight_trans = torch.load('kj_weight/.pth')
 svd_head, svd_delta_weight_trans = svd_trans_weight(delta_weight_trans, delta_weight_trans_lmhead)
 torch.save(svd_head, "kj_weight_lmhead_svd/.pth")
 torch.save(svd_delta_weight_trans, "kj_weight_svd/.pth")
-
+"""
