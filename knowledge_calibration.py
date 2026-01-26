@@ -3,24 +3,25 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import re
 
 
-def calibration_transweight(qwen253b, qwen253b_finetune, head_trans, trans_weight, site_layer, specific_layer=None):
+def calibration_transweight(baselm, baselm_finetune, head_trans, trans_weight, site_layer, specific_layer=None):
     cali_head = None
     calibration_weight = {}
 
-    for (name, param), (_, param_raw) in zip(qwen253b_finetune.named_parameters(), qwen253b.named_parameters()):
+    for (name, param), (_, param_raw) in zip(baselm_finetune.named_parameters(), baselm.named_parameters()):
         layer_num = re.search(r'layers\.(\d+)\.', name)
         if layer_num == None:  ## embed
             if "embed" in name:
                 calibration_weight[name] = param - param_raw - trans_weight[name]
             elif "lm_head" in name:
-                if head_trans.shape[0] != qwen253b_finetune.lm_head.weight.shape[0]:
-                    head_trans = torch.ones([qwen253b_finetune.lm_head.weight.shape[0], head_trans.shape[0]]) @ head_trans
-                cali_head = qwen253b_finetune.lm_head.weight - qwen253b.lm_head.weight - head_trans
+                if head_trans.shape[0] != baselm_finetune.lm_head.weight.shape[0]:
+                    head_trans = torch.ones([baselm_finetune.lm_head.weight.shape[0], head_trans.shape[0]]) @ head_trans
+                cali_head = baselm_finetune.lm_head.weight - baselm.lm_head.weight - head_trans
         else:
             layer_num = int(layer_num.group(1))
+            ## specific layers
             # if layer_num in specific_layer:
             #     calibration_weight[name] = param - param_raw - trans_weight[name]
-            ## last 24 layers
+            ## last layers
             if layer_num>=site_layer:
                 calibration_weight[name] = param - param_raw - trans_weight[name]
             # if layer_num < 12:
@@ -28,51 +29,53 @@ def calibration_transweight(qwen253b, qwen253b_finetune, head_trans, trans_weigh
             # elif layer_num >= 24:
             #     calibration_weight[name] = param - param_raw - trans_weight[name.replace(str(layer_num), str(layer_num-12))]  
     if cali_head == None:
-        if head_trans.shape[0] != qwen253b_finetune.lm_head.weight.shape[0]:
-            head_trans = torch.ones([qwen253b_finetune.lm_head.weight.shape[0], head_trans.shape[0]]) @ head_trans
-        cali_head = qwen253b_finetune.lm_head.weight - qwen253b.lm_head.weight - head_trans
+        if head_trans.shape[0] != baselm_finetune.lm_head.weight.shape[0]:
+            head_trans = torch.ones([baselm_finetune.lm_head.weight.shape[0], head_trans.shape[0]]) @ head_trans
+        cali_head = baselm_finetune.lm_head.weight - baselm.lm_head.weight - head_trans
     return cali_head, calibration_weight
 
 
-def full_train_model_save(qwen253b, calibration_weight, calibration_weight_lmhead, weight_trans_qwen253b_lmhead, weight_trans_qwen253b, site_layer, specific_layer=None):
+def full_train_model_save(baselm, calibration_weight, calibration_weight_lmhead, weight_trans_baselm_lmhead, weight_trans_baselm, site_layer, specific_layer=None):
     ### save: raw_model+inject_knowledge+calibration_matrix  
-    for name, param in qwen253b.named_parameters():
+    for name, param in baselm.named_parameters():
         if name in calibration_weight:
             layer_num = re.search(r'layers\.(\d+)\.', name)
             if layer_num == None:
-                plust_weight = calibration_weight[name] + param + weight_trans_qwen253b[name]
+                plust_weight = calibration_weight[name] + param + weight_trans_baselm[name]
             else:
                 layer_num = int(layer_num.group(1))
+                ## specific layers
                 # if layer_num in specific_layer:
-                #     plust_weight = calibration_weight[name] + param + weight_trans_qwen253b[name]
+                #     plust_weight = calibration_weight[name] + param + weight_trans_baselm[name]
                 if layer_num >= site_layer:
-                    plust_weight = calibration_weight[name] + param + weight_trans_qwen253b[name]
+                    plust_weight = calibration_weight[name] + param + weight_trans_baselm[name]
                 # if layer_num < 12:
-                #     plust_weight = calibration_weight[name] + param + weight_trans_qwen253b[name]
+                #     plust_weight = calibration_weight[name] + param + weight_trans_baselm[name]
                 # elif layer_num >= 24:
-                #     plust_weight= calibration_weight[name] + param + weight_trans_qwen253b[name.replace(str(layer_num), str(layer_num-12))]
+                #     plust_weight= calibration_weight[name] + param + weight_trans_baselm[name.replace(str(layer_num), str(layer_num-12))]
             with torch.no_grad():
                 param.copy_(plust_weight.to(param.device))
     with torch.no_grad():
-        if weight_trans_qwen253b_lmhead.shape[0] != qwen253b.lm_head.weight.shape[0]:
-            weight_trans_qwen253b_lmhead = torch.ones([qwen253b.lm_head.weight.shape[0], weight_trans_qwen253b_lmhead.shape[0]]) @ weight_trans_qwen253b_lmhead
-        qwen253b.lm_head.weight.copy_((qwen253b.lm_head.weight + calibration_weight_lmhead + weight_trans_qwen253b_lmhead).to(qwen253b.lm_head.weight.device))
-    return qwen253b
+        if weight_trans_baselm_lmhead.shape[0] != baselm.lm_head.weight.shape[0]:
+            weight_trans_baselm_lmhead = torch.ones([baselm.lm_head.weight.shape[0], weight_trans_baselm_lmhead.shape[0]]) @ weight_trans_baselm_lmhead
+        baselm.lm_head.weight.copy_((baselm.lm_head.weight + calibration_weight_lmhead + weight_trans_baselm_lmhead).to(baselm.lm_head.weight.device))
+    return baselm
     
 
-def calibration(qwen253b, qwen253b_finetune, svd_trans, svd_trans_head, specific_layer=None):
-    cali_head = qwen253b_finetune.lm_head.weight - qwen253b.lm_head.weight - svd_trans_head[0] @ svd_trans_head[1].T
+def calibration_withsvd(baselm, baselm_finetune, svd_trans, svd_trans_head, specific_layer=None, layer_site=12):
+    cali_head = baselm_finetune.lm_head.weight - baselm.lm_head.weight - svd_trans_head[0] @ svd_trans_head[1].T
     calibration_weight = {}
-    for (name, param), (_, param_raw) in zip(qwen253b_finetune.named_parameters(), qwen253b.named_parameters()):
+    for (name, param), (_, param_raw) in zip(baselm_finetune.named_parameters(), baselm.named_parameters()):
         if len(param.shape) > 1:  ### remove bias no svd
             layer_num = re.search(r'layers\.(\d+)\.', name)
             if layer_num == None:  ## embed
                 calibration_weight[name] = param - param_raw - svd_trans[name][0] @ svd_trans[name][1].T
             else:
                 layer_num = int(layer_num.group(1))
+                ## specific layers
                 # if layer_num in specific_layer:
                 #     calibration_weight[name] = param - param_raw - svd_trans[name][0] @ svd_trans[name][1].T
-                if layer_num>=12:  ## last 24 layers
+                if layer_num>=layer_site:  ## last 24 layers
                     calibration_weight[name] = param - param_raw - svd_trans[name][0] @ svd_trans[name][1].T
                 
                 # if layer_num < 12:
@@ -82,140 +85,52 @@ def calibration(qwen253b, qwen253b_finetune, svd_trans, svd_trans_head, specific
     return cali_head, calibration_weight
 
 
-def model_save(qwen253b, calibration_weight, calibration_weight_lmhead):
+def model_save(baselm, calibration_weight, calibration_weight_lmhead):
     ### save: raw_model+calibration_matrix  
-    for name, param in qwen253b.named_parameters():
+    for name, param in baselm.named_parameters():
         if name in calibration_weight:
             plust_weight = calibration_weight[name] + param
             with torch.no_grad():
                 param.copy_(plust_weight.to(param.device))
     with torch.no_grad():
-        qwen253b.lm_head.weight.copy_((qwen253b.lm_head.weight + calibration_weight_lmhead).to(qwen253b.lm_head.weight.device))
-    return qwen253b
+        baselm.lm_head.weight.copy_((baselm.lm_head.weight + calibration_weight_lmhead).to(baselm.lm_head.weight.device))
+    return baselm
 
 
-
-# qwen253b = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/llms/Qwen2.5-3B-Instruct')
-# qwen253b_valdata_finetune = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/sft/medcasereasoning_reasoningdiagnostic_valdata_freezefirst12layer')
-# trans_head = torch.load('/data_1/zhl/ReverseDistillation/weighttranslast24_delta_lmhead_medcasereasoning_val_reasoningdiagnostic.pth')
-# trans_weight = torch.load('/data_1/zhl/ReverseDistillation/weighttranslast24_delta_medcasereasoning_val_reasoningdiagnostic.pth')
-# calibration_weight_lmhead, calibration_weight = calibration_transweight(qwen253b, qwen253b_valdata_finetune, trans_head, trans_weight)
-# trans_head_all = torch.load('/data_1/zhl/ReverseDistillation/weighttranslast24_delta_lmhead_medcasereasoning_all_reasoningdiagnostic.pth')
-# trans_weight_all = torch.load('/data_1/zhl/ReverseDistillation/weighttranslast24_delta_medcasereasoning_all_reasoningdiagnostic.pth')
-# qwen253b_cali_fulltrain = full_train_model_save(qwen253b, calibration_weight, calibration_weight_lmhead, trans_head_all, trans_weight_all)
-# qwen253b_cali_fulltrain.save_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/calibration/medcasereasoning_reasoningdiagnostic_calibration_weighttrans_last24layer_fullsft')
-# quit()
-# quit()
-
-# qwen253b = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/llms/Qwen2.5-3B-Instruct')
-# qwen253b_valdata_finetune = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/sft/medcasereasoning_val_reasoningdiagnostic_253b_specificlayer_8epoch')
-# trans_head = torch.load('/data_1/zhl/ReverseDistillation/weighttransspecific_layer_delta_lmhead_medcasereasoning_val_reasoningdiagnostic.pth')
-# trans_weight = torch.load('/data_1/zhl/ReverseDistillation/weighttransspecific_layer_delta_medcasereasoning_val_reasoningdiagnostic.pth')
-# specific_layer = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 33, 34, 35]
-# calibration_weight_lmhead, calibration_weight = calibration_transweight(qwen253b, qwen253b_valdata_finetune, trans_head, trans_weight, specific_layer)
-
-# trans_head_all = torch.load('/data_1/zhl/ReverseDistillation/weighttransspecific_delta_lmhead_medcasereasoning_all_reasoningdiagnostic.pth')
-# trans_weight_all = torch.load('/data_1/zhl/ReverseDistillation/weighttransspecific_delta_medcasereasoning_all_reasoningdiagnostic.pth')
-# qwen253b_cali_fulltrain = full_train_model_save(qwen253b, calibration_weight, calibration_weight_lmhead, trans_head_all, trans_weight_all, specific_layer)
-# qwen253b_cali_fulltrain.save_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/calibration/medcasereasoning_reasoningdiagnostic_calibration_weighttrans_specificlayer_fullsft')
-# quit()
-
-# qwen253b = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/llms/Qwen2.5-3B-Instruct')
-# qwen253b_valdata_finetune = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/sft/medcasereasoning_val_reasoningdiagnostic_253b_specificlayer_8epoch')
-# svd_trans_head = torch.load('/data_1/zhl/ReverseDistillation/svd_delta_weighttransspecific_layer_lmhead_medcasereasoning_val_reasoningdiagnostic.pth')
-# svd_trans = torch.load('/data_1/zhl/ReverseDistillation/svd_delta_weighttransspecific_layer_medcasereasoning_val_reasoningdiagnostic.pth')
-# specific_layer = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 33, 34, 35]
-# calibration_weight_lmhead, calibration_weight = calibration(qwen253b, qwen253b_valdata_finetune, svd_trans, svd_trans_head, specific_layer)
-# qwen253b_cali = model_save(qwen253b, calibration_weight, calibration_weight_lmhead)
-# qwen253b_cali.save_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/calibration/medcasereasoning_reasoningdiagnostic_epoch8_3B_valcalibration_specificlayer')
 
 
 
 ## calibration + kj + raw
-# path_llm = '/data/yakun_data/A-mem/models/Qwen2.5-7B-Instruct/'
-# path_llm = '/data/yakun_data/A-mem/models/phi-2'
-# path_llm = '/data/yakun_data/A-mem/models/Llama-3.2-3B-Instruct/'
-path_llm = '/data/yakun_data/A-mem/models/Qwen2.5-3B-Instruct/'
-
-# path_llm_valfinetunefreeze = '/root/data/kj/LLaMA-Factory/saves/medcasereasoning/full/sft/qwen257B_medcasereasoning_val_epoch6_freeze_firstlayers'
-# path_trans_head_val = 'kj_weight/medcasereasoning/valdata_kj_lastlayers_lmhead.pth'
-# path_trans_weight_val = '/root/data/kj/kj_weight/medcasereasoning/valdata_kj_lastlayers.pth'
-# path_trans_weight_all = "/root/data/kj/kj_weight/medcasereasoning/alldata_kj_lastlayers.pth"
-# path_trans_head_all = "/root/data/kj/kj_weight/medcasereasoning/alldata_kj_lastlayers_lmhead.pth"
-
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/medcasereasoning/full/sft/qwen257B_medcasereasoning_val_epoch6_allsft/checkpoint-252'
-# path_trans_head_val = "/data/yakun_data/kj/kj_weight/medcasereasoning/qwen253B27B_valdata_kj_lastlayers_lmhead.pth"
-# path_trans_weight_val = "/data/yakun_data/kj/kj_weight/medcasereasoning/qwen253B27B_valdata_kj_lastlayers.pth"
-# path_trans_weight_all = "/data/yakun_data/kj/kj_weight/medcasereasoning/qwen253B27B_alldata_kj_lastlayers.pth"
-# path_trans_head_all = "/data/yakun_data/kj/kj_weight/medcasereasoning/qwen253B27B_alldata_kj_lastlayers_lmhead.pth"
-
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/CHEBI20/full/sft/qwen257b_val_6epoch_freezefirst4layers'
-# path_trans_head_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen2505B27B_valdata_kj_lastlayers_lmhead.pth'
-# path_trans_weight_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen2505B27B_valdata_kj_lastlayers.pth'
-# path_trans_weight_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen2505B27B_alldata_kj_lastlayers.pth'
-# path_trans_head_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen2505B27B_alldata_kj_lastlayers_lmhead.pth'
-
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/CHEBI20/full/sft/qwen257b_val_6epoch_sft'
-# path_trans_head_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen253B27B_valdata_kj_lastlayers_lmhead.pth'
-# path_trans_weight_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen253B27B_valdata_kj_lastlayers.pth'
-# path_trans_weight_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen253B27B_alldata_kj_lastlayers.pth'
-# path_trans_head_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen253B27B_alldata_kj_lastlayers_lmhead.pth'
+path_llm = 'models/Qwen2.5-3B-Instruct/'
 
 
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/CHEBI20/full/sft/phi2_val_6epoch_freeze_first8layers'
-# path_trans_weight_val = '/data/yakun_data/kj/kj_weight/chebi20/phi/phi1522_valdata_kj_lastlayers.pth'
-# path_trans_head_val = '/data/yakun_data/kj/kj_weight/chebi20/phi/phi1522_valdata_kj_lastlayers_lmhead.pth'
-# path_trans_weight_all = '/data/yakun_data/kj/kj_weight/chebi20/phi/phi1522_alldata_kj_lastlayers.pth'
-# path_trans_head_all = '/data/yakun_data/kj/kj_weight/chebi20/phi/phi1522_alldata_kj_lastlayers_lmhead.pth'
+path_trans_weight_val = 'kj_weight_calibration/.pth'
+path_trans_head_val = 'kj_weight_lmhead_calibration/.pth'
+path_llm_valfinetune = ''  ## llm finetuned with calibration data
 
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/CHEBI20/full/sft/llama323B_val_6epoch_freezefirst12layers'
-# path_trans_weight_val = '/data/yakun_data/kj/kj_weight/chebi20/llama/llama321B23B_valdata_kj_lastlayers.pth'
-# path_trans_head_val = '/data/yakun_data/kj/kj_weight/chebi20/llama/llama321B23B_valdata_kj_lastlayers_lmhead.pth'
-# path_trans_weight_all = '/data/yakun_data/kj/kj_weight/chebi20/llama/llama321B23B_alldata_kj_lastlayers.pth'
-# path_trans_head_all = '/data/yakun_data/kj/kj_weight/chebi20/llama/llama321B23B_alldata_kj_lastlayers_lmhead.pth'
-
-# path_trans_weight_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen/qwen2505B23B_005sample_valdata_kj_lastlayers.pth'
-# path_trans_head_val = '/data/yakun_data/kj/kj_weight/chebi20/qwen/qwen2505B23B_005sample_valdata_kj_lastlayers_lmhead.pth'
-# path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/CHEBI20/full/sft/qwen253B_sft_6epoch_CHEBI20_005sample_freezelast12layers'
-# path_trans_weight_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen/qwen2505B23B_alldata_kj_lastlayers.pth'
-# path_trans_head_all = '/data/yakun_data/kj/kj_weight/chebi20/qwen/qwen2505B23B_alldata_kj_lastlayers_lmhead.pth'
-
-path_trans_weight_val = '/data/yakun_data/kj/kj_weight/medcasereasoning/qwen/qwen2505B23B_01sample_valdata_kj_lastlayers.pth'
-path_trans_head_val = '/data/yakun_data/kj/kj_weight/medcasereasoning/qwen/qwen2505B23B_01sample_valdata_kj_lastlayers_lmhead.pth'
-path_llm_valfinetunefreeze = '/data/yakun_data/kj/LLaMA-Factory/saves/medcasereasoning/full/sft/qwen253B_sft_6epoch_medcasereasoning_reasoningdiagnostic_01sample_freezelast12layers'
-
-path_trans_weight_all = '/data/yakun_data/kj/kj_weight/medcasereasoning/qwen/qwen2505B23B_alldata_kj_lastlayers.pth'
-path_trans_head_all = '/data/yakun_data/kj/kj_weight/medcasereasoning/qwen/qwen2505B23B_alldata_kj_lastlayers_lmhead.pth'
+path_trans_weight_all = 'kj_weight_all/.pth'
+path_trans_head_all = 'kj_weight_lmhead_all/.pth'
 
 llm = AutoModelForCausalLM.from_pretrained(path_llm)
-llm_valdata_finetune = AutoModelForCausalLM.from_pretrained(path_llm_valfinetunefreeze)
+llm_valdata_finetune = AutoModelForCausalLM.from_pretrained(path_llm_valfinetune)
 trans_head_val = torch.load(path_trans_head_val)
 trans_weight_val = torch.load(path_trans_weight_val)
-calibration_weight_lmhead, calibration_weight = calibration_transweight(llm, llm_valdata_finetune, trans_head_val, trans_weight_val, site_layer=12)  ## site_layer=0: qwen253Bto7B, site_layer=4: qwen2505Bto7B, site_layer=12, llama3.21Bto3B
+calibration_weight_lmhead, calibration_weight = calibration_transweight(llm, llm_valdata_finetune, trans_head_val, trans_weight_val, site_layer=12)  ## site_layer=0: baselmto7B, site_layer=4: qwen2505Bto7B, site_layer=12, llama3.21Bto3B
 trans_head_all = torch.load(path_trans_head_all)
 trans_weight_all = torch.load(path_trans_weight_all)
-qwen253b_cali_fulltrain = full_train_model_save(llm, calibration_weight, calibration_weight_lmhead, trans_head_all, trans_weight_all, site_layer=12)
-# qwen253b_cali_fulltrain.save_pretrained('kj_weight/chebi20/llama/chebi20_calibration_kjinject_lastlayers_llama321Bto3B')
-qwen253b_cali_fulltrain.save_pretrained('kj_weight/medcasereasoning/medcasereasoning_calibration_kjinject_lastlayers_qwen2505Bto3B_01sample')
+baselm_cali_fulltrain = full_train_model_save(llm, calibration_weight, calibration_weight_lmhead, trans_head_all, trans_weight_all, site_layer=12)
+baselm_cali_fulltrain.save_pretrained('')
 
-quit()
-quit()
-quit()
+"""
+baselm = AutoModelForCausalLM.from_pretrained('models/Qwen2.5-3B-Instruct')
+baselm_valdata_finetune = AutoModelForCausalLM.from_pretrained(path_llm_valfinetune)
 
-
-
-
-
-qwen253b = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/llms/Qwen2.5-3B-Instruct')
-# qwen253b_valdata_finetune = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/sft/medcasereasoning_reasoningdiagnostic_valdata_freezefirst12layer')
-qwen253b_valdata_finetune = AutoModelForCausalLM.from_pretrained('/data_1/zhl/ReverseDistillation/LLaMA-Factory/saves/qwen25_medcasereasoning/full/sft/medcasereasoning_reasoningdiagnostic_valdata_epoch6_3B_last24layeremblmhead')
-
-svd_trans_head = torch.load('/data_1/zhl/ReverseDistillation/kj_weight/svd_medcasereasoning_valdata_kjnoT_last24layer_lmhead_reasoningdiagnostic.pth')
-svd_trans = torch.load('/data_1/zhl/ReverseDistillation/kj_weight/svd_medcasereasoning_valdata_kjnoT_last24layer_reasoningdiagnostic.pth')
-calibration_weight_lmhead, calibration_weight = calibration(qwen253b, qwen253b_valdata_finetune, svd_trans, svd_trans_head, specific_layer=None)
-qwen253b_cali = model_save(qwen253b, calibration_weight, calibration_weight_lmhead)
-qwen253b_cali.save_pretrained('/data_1/zhl/ReverseDistillation/kj_weight/calibration/valdata_kjnoT_last24layer_reasoningdiagnostic')
-
+svd_trans_head = torch.load('kj_weight_lmhead_svd/.pth')
+svd_trans = torch.load('kj_weight_svd/.pth')
+calibration_weight_lmhead, calibration_weight = calibration_withsvd(baselm, baselm_valdata_finetune, svd_trans, svd_trans_head, specific_layer=None, layer_site=12)
+baselm_cali = model_save(baselm, calibration_weight, calibration_weight_lmhead)
+baselm_cali.save_pretrained('')
+"""
 
 
 
