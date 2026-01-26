@@ -27,21 +27,27 @@ def trans_weight_lastlayers_inverse(model_slm_param_name, model_llm_param_name, 
             else:
                 if model_llm_tempweight.shape[0] > model_llm_tempweight.shape[1]:  ## right_w
                     ## with .T
+                    ### ones for B
                     # onesw = torch.ones([model_slm_tempweight.shape[0], model_llm_tempweight.shape[0]])
                     # w = torch.linalg.pinv(model_slm_tempweight.T @ model_slm_tempweight) @ model_slm_tempweight.T @ torch.linalg.pinv(onesw.T @ onesw) @ onesw.T @ model_llm_tempweight
+                    ### eye for B
                     # iw = torch.eye(model_llm_tempweight.shape[0], model_slm_tempweight.shape[0])
                     # w = torch.linalg.pinv(model_slm_tempweight.T @ model_slm_tempweight) @ model_slm_tempweight.T @ iw.T @ model_llm_tempweight
                     ## without .T
                     B = torch.ones([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
+                    # B = torch.eye([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
                     w = torch.linalg.pinv(B) @ model_llm_tempweight  ## right_w
                 else:  ## left_w
                     ## with .T
+                    ### ones for B
                     # onesw = torch.ones([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
                     # w = model_llm_tempweight @ onesw.T @ torch.linalg.pinv(onesw @ onesw.T) @ model_slm_tempweight.T @ torch.linalg.pinv(model_slm_tempweight @ model_slm_tempweight.T)
+                    ### eye for B
                     # iw = torch.eye(model_slm_tempweight.shape[1], model_llm_tempweight.shape[1])
                     # w = model_llm_tempweight @ iw.T @ model_slm_tempweight.T @ torch.linalg.pinv(model_slm_tempweight @ model_slm_tempweight.T)
                     ## without .T
                     B = model_slm_tempweight @ torch.ones([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
+                    # B = model_slm_tempweight @ torch.eye([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
                     w = model_llm_tempweight @ torch.linalg.pinv(B)  ## left_w
             trans_weight[name] = w
     return trans_weight
@@ -71,21 +77,27 @@ def trans_weight_lastlayers(model_slm_param_name, model_llm_param_name, layer_si
         else:
             if model_llm_tempweight.shape[0] > model_llm_tempweight.shape[1]:  ## right_w
                 ## with .T
+                ### ones for B
                 # onesw = torch.ones([model_slm_tempweight.shape[0], model_llm_tempweight.shape[0]])
                 # w = torch.linalg.pinv(model_slm_tempweight.T @ model_slm_tempweight) @ model_slm_tempweight.T @ torch.linalg.pinv(onesw.T @ onesw) @ onesw.T @ model_llm_tempweight
+                ### eye for B
                 # iw = torch.eye(model_llm_tempweight.shape[0], model_slm_tempweight.shape[0])
                 # w = torch.linalg.pinv(model_slm_tempweight.T @ model_slm_tempweight) @ model_slm_tempweight.T @ iw.T @ model_llm_tempweight
                 ## without .T
                 B = torch.ones([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
+                # B = torch.eye([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
                 w = torch.linalg.pinv(B) @ model_llm_tempweight  ## right_w
             else:  ## left_w
                 ## with .T
+                ### ones for B
                 # onesw = torch.ones([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
                 # w = model_llm_tempweight @ onesw.T @ torch.linalg.pinv(onesw @ onesw.T) @ model_slm_tempweight.T @ torch.linalg.pinv(model_slm_tempweight @ model_slm_tempweight.T)
+                ### eye for B
                 # iw = torch.eye(model_slm_tempweight.shape[1], model_llm_tempweight.shape[1])
                 # w = model_llm_tempweight @ iw.T @ model_slm_tempweight.T @ torch.linalg.pinv(model_slm_tempweight @ model_slm_tempweight.T)
                 ## without .T
                 B = model_slm_tempweight @ torch.ones([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
+                # B = model_slm_tempweight @ torch.eye([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
                 w = model_llm_tempweight @ torch.linalg.pinv(B)  ## left_w
         trans_weight[name_trans] = w
     return trans_weight
@@ -108,9 +120,11 @@ def trans_weight_gradscore_layer(model_slm_param_name, model_llm_param_name, spe
         else:
             if model_llm_tempweight.shape[0] > model_llm_tempweight.shape[1]:
                 B = torch.ones([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
+                # B = torch.eye([model_llm_tempweight.shape[0], model_slm_tempweight.shape[0]]) @ model_slm_tempweight
                 w = torch.linalg.pinv(B) @ model_llm_tempweight  ## right_w
             else:
                 B = model_slm_tempweight @ torch.ones([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
+                # B = model_slm_tempweight @ torch.eye([model_slm_tempweight.shape[1], model_llm_tempweight.shape[1]])
                 w = model_llm_tempweight @ torch.linalg.pinv(B)  ## left_w
         trans_weight[name_trans] = w
     return trans_weight
@@ -121,6 +135,7 @@ def lm_head_trans_weight(llm_lm_head, slm_lm_head):
         lm_head_w = torch.linalg.pinv(slm_lm_head) @ llm_lm_head
     else:
         B = torch.ones([llm_lm_head.shape[0], slm_lm_head.shape[0]]) @ slm_lm_head
+        # B = torch.eye([llm_lm_head.shape[0], slm_lm_head.shape[0]]) @ slm_lm_head
         lm_head_w = torch.linalg.pinv(B) @ llm_lm_head
     return lm_head_w
 
@@ -213,9 +228,11 @@ def trans_knowledge_specific_layer(model_slm, model_slm_finetune, model_llm_para
             else:
                 if model_llm_param_name[name].shape[0] > model_llm_param_name[name].shape[1]:
                     B = (torch.ones([model_llm_param_name[name].shape[0], delta_weight.shape[0]]) @ delta_weight)
+                    # B = (torch.eye([model_llm_param_name[name].shape[0], delta_weight.shape[0]]) @ delta_weight)
                     trans_weight_delta = B @ trans_weight[name]
                 else:
                     B = (delta_weight @ torch.ones([delta_weight.shape[1], model_llm_param_name[name].shape[1]]))
+                    # B = (delta_weight @ torch.eye([delta_weight.shape[1], model_llm_param_name[name].shape[1]]))
                     trans_weight_delta = trans_weight[name] @ B
             delta_weight_trans[name] = trans_weight_delta
     return delta_weight_trans, delta_weight_trans_lmhead
