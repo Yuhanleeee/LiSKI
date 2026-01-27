@@ -62,7 +62,7 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    train_json_path = "CHEBI20_train.json"
+    train_json_path = "ChEBI20_train.json"
     train_dataset = InstructionDataset(train_json_path, tokenizer, max_length=2048)
     train_dataloader = DataLoader(
         train_dataset,
