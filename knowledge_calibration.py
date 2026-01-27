@@ -36,6 +36,32 @@ def calibration_transweight(baselm, baselm_finetune, head_trans, trans_weight, s
         cali_head = baselm_finetune.lm_head.weight - baselm.lm_head.weight - lambda_kj*head_trans
     return cali_head, calibration_weight
 
+def full_train_model_save_iterative(baselm, calibration_weight, calibration_weight_lmhead, weight_trans_baselm_lmhead, weight_trans_baselm, site_layer, specific_layer=None, lambda_kj=1, xi=0.0001):
+    ### save with an iterative manner: raw_model+inject_knowledge+calibration_matrix
+    for name, param in baselm.named_parameters():
+        if name in calibration_weight:
+            layer_num = re.search(r'layers\.(\d+)\.', name)
+            if layer_num == None:
+                plust_weight = lambda_kj*calibration_weight[name]*(1+0.0001*torch.randn_like(calibration_weight[name])) + param + lambda_kj*weight_trans_baselm[name]
+            else:
+                layer_num = int(layer_num.group(1))
+                ## specific layers
+                # if layer_num in specific_layer:
+                #     plust_weight = lambda_kj*calibration_weight[name]*(1+xi*torch.randn_like(calibration_weight[name])) + param + lambda_kj*weight_trans_baselm[name]
+                if layer_num >= site_layer:
+                    plust_weight = lambda_kj*calibration_weight[name]*(1+xi*torch.randn_like(calibration_weight[name])) + param + lambda_kj*weight_trans_baselm[name]
+                # if layer_num < 12:
+                #     plust_weight = lambda_kj*calibration_weight[name]*(1+xi*torch.randn_like(calibration_weight[name])) + param + lambda_kj*weight_trans_baselm[name]
+                # elif layer_num >= 24:
+                #     plust_weight= lambda_kj*calibration_weight[name]*(1+xi*torch.randn_like(calibration_weight[name])) + param + lambda_kj*weight_trans_baselm[name.replace(str(layer_num), str(layer_num-12))]
+            with torch.no_grad():
+                param.copy_(plust_weight.to(param.device))
+    with torch.no_grad():
+        if weight_trans_baselm_lmhead.shape[0] != baselm.lm_head.weight.shape[0]:
+            # weight_trans_baselm_lmhead = torch.eye([baselm.lm_head.weight.shape[0], weight_trans_baselm_lmhead.shape[0]]) @ weight_trans_baselm_lmhead
+            weight_trans_baselm_lmhead = torch.ones([baselm.lm_head.weight.shape[0], weight_trans_baselm_lmhead.shape[0]]) @ weight_trans_baselm_lmhead
+        baselm.lm_head.weight.copy_((baselm.lm_head.weight + lambda_kj*calibration_weight_lmhead*(1+xi*torch.randn_like(calibration_weight_lmhead)) + lambda_kj*weight_trans_baselm_lmhead).to(baselm.lm_head.weight.device))
+    return baselm
 
 def full_train_model_save(baselm, calibration_weight, calibration_weight_lmhead, weight_trans_baselm_lmhead, weight_trans_baselm, site_layer, specific_layer=None, lambda_kj=1):
     ### save: raw_model+inject_knowledge+calibration_matrix  
