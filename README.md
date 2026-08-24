@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-### Installation
+### 1. Installation
 Install LiSKI via pip:
 ```
 Download and Unzip Repository
@@ -14,7 +14,7 @@ pip install -r requirements.txt
 pip install flash-attn --no-build-isolation
 ```
 
-### Datasets
+### 2. Datasets
 **ChEBI20**:  
 Download the ChEBI20 dataset from https://github.com/blender-nlp/MolT5/tree/main/ChEBI-20_data, and place it under the `datasets`.
 Run `datasets/chebi20_preprocess.py` for dataset preprocessing.
@@ -28,7 +28,7 @@ huggingface-cli download --repo-type dataset --resume-download zou-lab/MedCaseRe
 python datasets/medcasereasoning_preproceess.py
 ```
 
-### Knowledge Injection and Calibration
+### 3. Knowledge Injection and Calibration
 
 - **Step 1.** Fine-tuning SLM with a specific dataset:
   ```
@@ -55,7 +55,7 @@ python datasets/medcasereasoning_preproceess.py
   python knowledge_calibration.py
   ``` 
 
-### TopK-Layer Selection
+### 4. TopK-Layer Selection
 - **Step 1.** Reload `transformers/trainer.py` with `grad_score/trainer.py`.
 - **Step 2.** Launch training with the CLI:
   ```
