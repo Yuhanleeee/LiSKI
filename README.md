@@ -2,7 +2,7 @@
 
 LLMs often face challenges in domain adaptation due to restricted access to domain-specific data and high computational costs. We propose a lightweight knowledge injection framework that fine-tunes a small model and transfers its learned knowledge representations to a target LLM, reducing data exposure and computational overhead. To mitigate knowledge loss during transfer, we introduce an iterative knowledge calibration strategy with theoretical guarantees on transformation error, stability, and linear convergence. Our framework consists of two stages: **(1) Knowledge Injection** and **(2) Knowledge Calibration**, as shown below.
 
-![LiSKI](asset/framework_v6.pdf)
+![LiSKI](asset/framework.png)
 
 
 ## Quick Start
